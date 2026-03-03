@@ -70,6 +70,16 @@ class WAT_Logger {
     }
 
     private static function log( array $data ) {
+        // Verify the table exists before every first write of a request.
+        // This catches missed activation hooks (e.g. after a directory rename).
+        static $table_verified = false;
+        if ( ! $table_verified ) {
+            if ( ! WAT_DB::table_exists() ) {
+                WAT_DB::create_table();
+            }
+            $table_verified = true;
+        }
+
         $data = array_merge( array(
             'ip_address' => self::get_ip(),
             'user_agent' => self::get_user_agent(),

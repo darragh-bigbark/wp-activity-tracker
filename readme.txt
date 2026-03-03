@@ -4,7 +4,7 @@ Tags: activity log, audit log, login tracking, security, user activity
 Requires at least: 5.8
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -70,6 +70,12 @@ Export functionality is planned for a future release.
 1. The Activity Log admin page showing recent events with filtering options.
 
 == Changelog ==
+
+= 1.0.1 =
+* Fix: Nothing was being logged; added `SHOW TABLES` existence check before every first write so the table is auto-created even if the activation hook was skipped.
+* Fix: Admin page now shows a notice and auto-creates the table if it is found missing.
+* Fix: DB insert failures are now written to the PHP error log when WP_DEBUG_LOG is enabled.
+* Fix: Replaced `post_updated` and `transition_post_status` hooks with `wp_after_insert_post` to reliably capture new post/page creation in both the classic and block editors.
 
 = 1.0.0 =
 * Initial release.

@@ -40,6 +40,16 @@ class WAT_Admin {
             return;
         }
 
+        // If the table is missing, create it now and show an admin notice.
+        // This is a visible failsafe for cases where the activation hook was skipped.
+        if ( ! WAT_DB::table_exists() ) {
+            WAT_DB::create_table();
+            echo '<div class="notice notice-warning is-dismissible"><p>';
+            echo '<strong>' . esc_html__( 'Site Activity Tracker:', 'site-activity-tracker' ) . '</strong> ';
+            esc_html_e( 'The activity log table was not found and has been re-created. New events will now be recorded. If this message keeps appearing, deactivate and reactivate the plugin.', 'site-activity-tracker' );
+            echo '</p></div>';
+        }
+
         // Only trust filter values when the nonce is present and valid.
         $nonce_valid = isset( $_GET['_wat_nonce'] )
             && wp_verify_nonce( sanitize_key( wp_unslash( $_GET['_wat_nonce'] ) ), 'wat_log_filter' );

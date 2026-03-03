@@ -7,6 +7,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 class WAT_DB {
 
     /**
+     * Check whether the activity log table exists in the database.
+     *
+     * @return bool
+     */
+    public static function table_exists() {
+        global $wpdb;
+        $table = $wpdb->prefix . WAT_TABLE_NAME;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- SHOW TABLES has no WP API equivalent.
+        return (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+    }
+
+    /**
      * Create the activity log table on plugin activation.
      */
     public static function create_table() {
@@ -72,15 +84,18 @@ class WAT_DB {
 
         $result = $wpdb->insert( $table, $row ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom activity log table; no WP API equivalent.
 
-        if ( $result ) {
-            // Invalidate cached log results and event-type list so the
-            // next page load reflects the newly inserted row.
-            wp_cache_delete( 'wat_event_types', 'wat_activity_log' );
-            wp_cache_delete( 'wat_log_version', 'wat_activity_log' );
-            return $wpdb->insert_id;
+        if ( false === $result ) {
+            if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG && $wpdb->last_error ) {
+                error_log( 'Site Activity Tracker — DB insert failed: ' . $wpdb->last_error );
+            }
+            return false;
         }
 
-        return false;
+        // Invalidate cached log results and event-type list so the
+        // next page load reflects the newly inserted row.
+        wp_cache_delete( 'wat_event_types', 'wat_activity_log' );
+        wp_cache_delete( 'wat_log_version', 'wat_activity_log' );
+        return $wpdb->insert_id;
     }
 
     /**
