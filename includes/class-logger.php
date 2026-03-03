@@ -42,10 +42,12 @@ class WAT_Logger {
         );
         foreach ( $keys as $key ) {
             if ( ! empty( $_SERVER[ $key ] ) ) {
+                // Unslash and sanitize before use; validate as IP below.
+                $raw = sanitize_text_field( wp_unslash( $_SERVER[ $key ] ) );
                 // X-Forwarded-For can be a comma-separated list; take the first.
-                $ip = trim( explode( ',', $_SERVER[ $key ] )[0] );
+                $ip  = trim( explode( ',', $raw )[0] );
                 if ( filter_var( $ip, FILTER_VALIDATE_IP ) ) {
-                    return sanitize_text_field( $ip );
+                    return $ip;
                 }
             }
         }

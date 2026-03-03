@@ -1,12 +1,12 @@
 <?php
 /**
- * Plugin Name:       WP Activity Tracker
- * Plugin URI:        https://example.com/wp-activity-tracker
+ * Plugin Name:       Site Activity Tracker
+ * Plugin URI:        https://github.com/darragh-bigbark/wp-activity-tracker
  * Description:       Tracks logins (username, IP, browser) and changes to posts, pages, plugins, and themes with timestamps.
  * Version:           1.0.0
  * Author:            Your Name
  * License:           GPL-2.0+
- * Text Domain:       wp-activity-tracker
+ * Text Domain:       site-activity-tracker
  */
 
 if ( ! defined( 'ABSPATH' ) ) {

@@ -39,10 +39,10 @@ class WAT_DB {
     }
 
     /**
-     * Insert an activity log entry.
+     * Insert an activity log entry and bust the log cache.
      *
      * @param array $data {
-     *     @type string      $event_type   Required. e.g. 'login', 'post_updated'.
+     *     @type string      $event_type   Required.
      *     @type int|null    $user_id
      *     @type string|null $username
      *     @type string|null $ip_address
@@ -70,9 +70,17 @@ class WAT_DB {
             'created_at'  => current_time( 'mysql' ),
         ) );
 
-        $result = $wpdb->insert( $table, $row );
+        $result = $wpdb->insert( $table, $row ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom activity log table; no WP API equivalent.
 
-        return $result ? $wpdb->insert_id : false;
+        if ( $result ) {
+            // Invalidate cached log results and event-type list so the
+            // next page load reflects the newly inserted row.
+            wp_cache_delete( 'wat_event_types', 'wat_activity_log' );
+            wp_cache_delete( 'wat_log_version', 'wat_activity_log' );
+            return $wpdb->insert_id;
+        }
+
+        return false;
     }
 
     /**
@@ -80,11 +88,11 @@ class WAT_DB {
      *
      * @param array $args {
      *     @type string $event_type  Filter by event type.
-     *     @type string $search      Search username or object name.
+     *     @type string $search      Search username, object name, or IP.
      *     @type int    $per_page    Rows per page (default 25).
      *     @type int    $page        Current page (default 1).
      * }
-     * @return array { rows, total }
+     * @return array { rows: array, total: int }
      */
     public static function get_logs( array $args = array() ) {
         global $wpdb;
@@ -98,59 +106,82 @@ class WAT_DB {
             'page'       => 1,
         ) );
 
-        $where  = array( '1=1' );
-        $values = array();
+        // Build a version-aware cache key so that a new insert busts all
+        // page-level caches without having to enumerate them individually.
+        $log_version = (int) wp_cache_get( 'wat_log_version', 'wat_activity_log' );
+        $cache_key   = 'wat_logs_v' . $log_version . '_' . md5( maybe_serialize( $args ) );
+        $cached      = wp_cache_get( $cache_key, 'wat_activity_log' );
+
+        if ( false !== $cached ) {
+            return $cached;
+        }
+
+        // Build WHERE clause from safe, hardcoded condition strings.
+        $where_clauses = array( '1=1' );
+        $prepare_args  = array();
 
         if ( ! empty( $args['event_type'] ) ) {
-            $where[]  = 'event_type = %s';
-            $values[] = sanitize_text_field( $args['event_type'] );
+            $where_clauses[] = 'event_type = %s';
+            $prepare_args[]  = sanitize_text_field( $args['event_type'] );
         }
 
         if ( ! empty( $args['search'] ) ) {
-            $like     = '%' . $wpdb->esc_like( sanitize_text_field( $args['search'] ) ) . '%';
-            $where[]  = '( username LIKE %s OR object_name LIKE %s OR ip_address LIKE %s )';
-            $values[] = $like;
-            $values[] = $like;
-            $values[] = $like;
+            $like            = '%' . $wpdb->esc_like( sanitize_text_field( $args['search'] ) ) . '%';
+            $where_clauses[] = '( username LIKE %s OR object_name LIKE %s OR ip_address LIKE %s )';
+            $prepare_args[]  = $like;
+            $prepare_args[]  = $like;
+            $prepare_args[]  = $like;
         }
 
-        $where_sql = implode( ' AND ', $where );
+        // $where_sql is constructed entirely from hardcoded string literals and
+        // $wpdb->esc_like() output — it contains no raw user input.
+        $where_sql = implode( ' AND ', $where_clauses );
         $offset    = ( absint( $args['page'] ) - 1 ) * absint( $args['per_page'] );
 
-        // Total count.
-        if ( ! empty( $values ) ) {
-            $count_sql = $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}", $values );
-        } else {
-            $count_sql = "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}";
-        }
-        $total = (int) $wpdb->get_var( $count_sql );
+        // --- COUNT query ---
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom table ($table = $wpdb->prefix + constant). $where_sql is built from hardcoded strings only.
+        $total = empty( $prepare_args )
+            ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$table}` WHERE {$where_sql}" )
+            : (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM `{$table}` WHERE {$where_sql}", $prepare_args ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above.
 
-        // Rows.
-        $limit_sql = $wpdb->prepare( 'LIMIT %d OFFSET %d', $args['per_page'], $offset );
+        // --- ROWS query ---
+        // Append LIMIT/OFFSET to the prepare args so a single prepare() call
+        // handles both user-supplied filters and pagination safely.
+        $rows_args   = array_merge( $prepare_args, array( absint( $args['per_page'] ), $offset ) );
 
-        if ( ! empty( $values ) ) {
-            $rows_sql = $wpdb->prepare(
-                "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY created_at DESC {$limit_sql}",
-                $values
-            );
-        } else {
-            $rows_sql = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY created_at DESC {$limit_sql}";
-        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom table ($table = $wpdb->prefix + constant). $where_sql is built from hardcoded strings only.
+        $rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE {$where_sql} ORDER BY created_at DESC LIMIT %d OFFSET %d", $rows_args ) );
 
-        $rows = $wpdb->get_results( $rows_sql );
-
-        return array(
-            'rows'  => $rows,
+        $result = array(
+            'rows'  => $rows ? $rows : array(),
             'total' => $total,
         );
+
+        wp_cache_set( $cache_key, $result, 'wat_activity_log', 5 * MINUTE_IN_SECONDS );
+
+        return $result;
     }
 
     /**
      * Return distinct event types present in the log table.
+     *
+     * @return string[]
      */
     public static function get_event_types() {
         global $wpdb;
+
+        $cached = wp_cache_get( 'wat_event_types', 'wat_activity_log' );
+        if ( false !== $cached ) {
+            return $cached;
+        }
+
         $table = $wpdb->prefix . WAT_TABLE_NAME;
-        return $wpdb->get_col( "SELECT DISTINCT event_type FROM {$table} ORDER BY event_type ASC" );
+
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom table ($table = $wpdb->prefix + constant). No user-supplied values in this query.
+        $types = $wpdb->get_col( "SELECT DISTINCT event_type FROM `{$table}` ORDER BY event_type ASC" );
+
+        wp_cache_set( 'wat_event_types', $types, 'wat_activity_log', 10 * MINUTE_IN_SECONDS );
+
+        return $types;
     }
 }
