@@ -195,12 +195,12 @@ class WAT_Admin {
      */
     private static function badge_class( $event_type ) {
         $map = array(
-            'login_success'       => 'success',
-            'login_failed'        => 'danger',
-            'logout'              => 'neutral',
-            'post_updated'        => 'info',
-            'post_status_changed' => 'info',
-            'post_deleted'        => 'danger',
+            'login_success'  => 'success',
+            'login_failed'   => 'danger',
+            'logout'         => 'neutral',
+            'post_created'   => 'success',
+            'post_updated'   => 'info',
+            'post_deleted'   => 'danger',
             'plugin_activated'    => 'success',
             'plugin_deactivated'  => 'warning',
             'plugin_deleted'      => 'danger',

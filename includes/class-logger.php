@@ -13,9 +13,10 @@ class WAT_Logger {
         add_action( 'wp_logout',       array( __CLASS__, 'on_logout' ) );
 
         // --- Post / page events ---
-        add_action( 'post_updated',            array( __CLASS__, 'on_post_updated' ), 10, 3 );
-        add_action( 'transition_post_status',  array( __CLASS__, 'on_post_status_change' ), 10, 3 );
-        add_action( 'delete_post',             array( __CLASS__, 'on_post_deleted' ), 10, 1 );
+        // wp_after_insert_post fires for both create and update (WP 5.6+),
+        // has an explicit $update flag, and works with the block editor REST API.
+        add_action( 'wp_after_insert_post', array( __CLASS__, 'on_post_after_insert' ), 10, 4 );
+        add_action( 'delete_post',          array( __CLASS__, 'on_post_deleted' ), 10, 1 );
 
         // --- Plugin events ---
         add_action( 'activated_plugin',   array( __CLASS__, 'on_plugin_activated' ),   10, 1 );
@@ -111,49 +112,46 @@ class WAT_Logger {
     // Post / page callbacks
     // -------------------------------------------------------------------------
 
-    public static function on_post_updated( $post_id, $post_after, $post_before ) {
-        // Skip auto-saves and revisions.
-        if ( wp_is_post_autosave( $post_id ) || wp_is_post_revision( $post_id ) ) {
+    public static function on_post_after_insert( $post_id, $post, $update, $post_before ) {
+        // Skip revisions and autosave shadow copies.
+        if ( wp_is_post_revision( $post_id ) || wp_is_post_autosave( $post_id ) ) {
             return;
         }
 
-        $info = self::current_user_info();
-        $type = ucfirst( $post_after->post_type );
-
-        self::log( array(
-            'event_type'  => 'post_updated',
-            'user_id'     => $info['user_id'],
-            'username'    => $info['username'],
-            'object_id'   => $post_id,
-            'object_name' => $post_after->post_title,
-            'description' => "{$type} updated: \"{$post_after->post_title}\" (ID {$post_id}).",
-        ) );
-    }
-
-    public static function on_post_status_change( $new_status, $old_status, $post ) {
-        // Only care about meaningful, non-trivial transitions.
-        if ( $new_status === $old_status ) {
-            return;
-        }
-        if ( wp_is_post_autosave( $post->ID ) || wp_is_post_revision( $post->ID ) ) {
-            return;
-        }
-        // Ignore the initial 'new' -> 'auto-draft' transition.
-        if ( 'new' === $old_status || 'inherit' === $new_status ) {
+        // Skip the silent auto-draft created when the editor is first opened —
+        // the user hasn't intentionally saved anything yet.
+        if ( 'auto-draft' === $post->post_status ) {
             return;
         }
 
         $info = self::current_user_info();
         $type = ucfirst( $post->post_type );
 
-        self::log( array(
-            'event_type'  => 'post_status_changed',
-            'user_id'     => $info['user_id'],
-            'username'    => $info['username'],
-            'object_id'   => $post->ID,
-            'object_name' => $post->post_title,
-            'description' => "{$type} \"{$post->post_title}\" status changed from \"{$old_status}\" to \"{$new_status}\".",
-        ) );
+        // Treat as a creation when:
+        //   a) it's a brand-new DB record ($update = false), or
+        //   b) the previous status was 'auto-draft' (first real save of a new post).
+        $prev_status    = $post_before ? $post_before->post_status : 'new';
+        $is_new_content = ! $update || 'auto-draft' === $prev_status;
+
+        if ( $is_new_content ) {
+            self::log( array(
+                'event_type'  => 'post_created',
+                'user_id'     => $info['user_id'],
+                'username'    => $info['username'],
+                'object_id'   => $post_id,
+                'object_name' => $post->post_title,
+                'description' => "{$type} created: \"{$post->post_title}\" (ID {$post_id}) — status: {$post->post_status}.",
+            ) );
+        } else {
+            self::log( array(
+                'event_type'  => 'post_updated',
+                'user_id'     => $info['user_id'],
+                'username'    => $info['username'],
+                'object_id'   => $post_id,
+                'object_name' => $post->post_title,
+                'description' => "{$type} updated: \"{$post->post_title}\" (ID {$post_id}) — status: {$prev_status} → {$post->post_status}.",
+            ) );
+        }
     }
 
     public static function on_post_deleted( $post_id ) {

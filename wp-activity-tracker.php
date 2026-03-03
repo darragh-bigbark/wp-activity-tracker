@@ -24,5 +24,13 @@ require_once WAT_PLUGIN_DIR . 'includes/class-admin.php';
 
 register_activation_hook( __FILE__, array( 'WAT_DB', 'create_table' ) );
 
-WAT_Logger::init();
-WAT_Admin::init();
+// Ensure the DB table exists on every load. Handles the case where the
+// activation hook was missed (e.g. after a directory rename or manual upload).
+add_action( 'plugins_loaded', function () {
+    if ( get_option( 'wat_db_version' ) !== WAT_VERSION ) {
+        WAT_DB::create_table();
+    }
+} );
+
+add_action( 'plugins_loaded', array( 'WAT_Logger', 'init' ) );
+add_action( 'plugins_loaded', array( 'WAT_Admin', 'init' ) );
