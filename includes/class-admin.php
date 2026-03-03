@@ -101,8 +101,8 @@ class WAT_Admin {
             <p class="wat-total">
                 <?php
                 $count_html = '<strong>' . esc_html( number_format_i18n( $total ) ) . '</strong>';
-                /* translators: %s: Number of activity log events found, wrapped in <strong> tags. */
                 $message = sprintf(
+                    /* translators: %s: Number of activity log events found, wrapped in <strong> tags. */
                     _n( '%s event found.', '%s events found.', $total, 'site-activity-tracker' ),
                     $count_html
                 );

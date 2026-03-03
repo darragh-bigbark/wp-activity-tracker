@@ -116,41 +116,47 @@ class WAT_DB {
             return $cached;
         }
 
-        // Build WHERE clause from safe, hardcoded condition strings.
-        $where_clauses = array( '1=1' );
-        $prepare_args  = array();
+        $per_page   = absint( $args['per_page'] );
+        $offset     = ( absint( $args['page'] ) - 1 ) * $per_page;
+        $event_type = sanitize_text_field( $args['event_type'] );
+        $has_type   = ! empty( $event_type );
+        $has_search = ! empty( $args['search'] );
+        $like       = $has_search
+            ? '%' . $wpdb->esc_like( sanitize_text_field( $args['search'] ) ) . '%'
+            : '';
 
-        if ( ! empty( $args['event_type'] ) ) {
-            $where_clauses[] = 'event_type = %s';
-            $prepare_args[]  = sanitize_text_field( $args['event_type'] );
+        // Each branch uses a static, fully-literal SQL string so that the
+        // Plugin Check static analyser can verify placeholders and escaping.
+        // $table is trusted: $wpdb->prefix (set by WP) + WAT_TABLE_NAME (constant).
+        if ( ! $has_type && ! $has_search ) {
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + constant; no user input.
+            $total = (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$table}`" );
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above.
+            $rows  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `{$table}` ORDER BY created_at DESC LIMIT %d OFFSET %d", $per_page, $offset ) );
+
+        } elseif ( $has_type && ! $has_search ) {
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + constant; $event_type is sanitized.
+            $total = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM `{$table}` WHERE event_type = %s", $event_type ) );
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above.
+            $rows  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE event_type = %s ORDER BY created_at DESC LIMIT %d OFFSET %d", $event_type, $per_page, $offset ) );
+
+        } elseif ( ! $has_type && $has_search ) {
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + constant; $like is produced by $wpdb->esc_like().
+            $total = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM `{$table}` WHERE ( username LIKE %s OR object_name LIKE %s OR ip_address LIKE %s )", $like, $like, $like ) );
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above.
+            $rows  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE ( username LIKE %s OR object_name LIKE %s OR ip_address LIKE %s ) ORDER BY created_at DESC LIMIT %d OFFSET %d", $like, $like, $like, $per_page, $offset ) );
+
+        } else {
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + constant; all values are sanitized/escaped.
+            $total = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM `{$table}` WHERE event_type = %s AND ( username LIKE %s OR object_name LIKE %s OR ip_address LIKE %s )", $event_type, $like, $like, $like ) );
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above.
+            $rows  = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE event_type = %s AND ( username LIKE %s OR object_name LIKE %s OR ip_address LIKE %s ) ORDER BY created_at DESC LIMIT %d OFFSET %d", $event_type, $like, $like, $like, $per_page, $offset ) );
+
         }
-
-        if ( ! empty( $args['search'] ) ) {
-            $like            = '%' . $wpdb->esc_like( sanitize_text_field( $args['search'] ) ) . '%';
-            $where_clauses[] = '( username LIKE %s OR object_name LIKE %s OR ip_address LIKE %s )';
-            $prepare_args[]  = $like;
-            $prepare_args[]  = $like;
-            $prepare_args[]  = $like;
-        }
-
-        // $where_sql is constructed entirely from hardcoded string literals and
-        // $wpdb->esc_like() output — it contains no raw user input.
-        $where_sql = implode( ' AND ', $where_clauses );
-        $offset    = ( absint( $args['page'] ) - 1 ) * absint( $args['per_page'] );
-
-        // --- COUNT query ---
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom table ($table = $wpdb->prefix + constant). $where_sql is built from hardcoded strings only.
-        $total = empty( $prepare_args )
-            ? (int) $wpdb->get_var( "SELECT COUNT(*) FROM `{$table}` WHERE {$where_sql}" )
-            : (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM `{$table}` WHERE {$where_sql}", $prepare_args ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above.
-
-        // --- ROWS query ---
-        // Append LIMIT/OFFSET to the prepare args so a single prepare() call
-        // handles both user-supplied filters and pagination safely.
-        $rows_args   = array_merge( $prepare_args, array( absint( $args['per_page'] ), $offset ) );
-
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Custom table ($table = $wpdb->prefix + constant). $where_sql is built from hardcoded strings only.
-        $rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE {$where_sql} ORDER BY created_at DESC LIMIT %d OFFSET %d", $rows_args ) );
 
         $result = array(
             'rows'  => $rows ? $rows : array(),

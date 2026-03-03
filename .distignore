@@ -1,0 +1,8 @@
+# Files and directories excluded from the WordPress.org distribution zip.
+# Used by wp dist-archive and similar build tools.
+
+.claude
+.git
+.gitignore
+.distignore
+*.json

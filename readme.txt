@@ -2,7 +2,7 @@
 Contributors: darragh-bigbark
 Tags: activity log, audit log, login tracking, security, user activity
 Requires at least: 5.8
-Tested up to: 6.7
+Tested up to: 6.9
 Requires PHP: 7.4
 Stable tag: 1.0.0
 License: GPLv2 or later
@@ -41,7 +41,7 @@ The plugin adds an *Activity Log* menu item in the WordPress admin sidebar. The 
 
 == Installation ==
 
-1. Upload the `wp-activity-tracker` folder to `/wp-content/plugins/`.
+1. Upload the `site-activity-tracker` folder to `/wp-content/plugins/`.
 2. Activate the plugin through the **Plugins → Installed Plugins** screen.
 3. Visit **Activity Log** in the admin sidebar to view recorded events.
 
