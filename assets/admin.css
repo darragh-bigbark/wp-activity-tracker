@@ -1,0 +1,114 @@
+/* WP Activity Tracker – Admin Styles */
+
+.wat-wrap {
+    max-width: 1400px;
+}
+
+/* Filter bar */
+.wat-filter-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0 12px;
+    flex-wrap: wrap;
+}
+
+.wat-filter-form select,
+.wat-filter-form input[type="search"] {
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid #8c8f94;
+    border-radius: 3px;
+    font-size: 13px;
+}
+
+.wat-filter-form input[type="search"] {
+    width: 240px;
+}
+
+/* Total count */
+.wat-total {
+    margin: 0 0 8px;
+    color: #646970;
+    font-size: 13px;
+}
+
+/* Table */
+.wat-table {
+    font-size: 13px;
+}
+
+.wat-table th {
+    font-weight: 600;
+}
+
+.wat-ua {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: help;
+}
+
+/* Badges */
+.wat-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+}
+
+.wat-badge--success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.wat-badge--danger {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.wat-badge--warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.wat-badge--info {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.wat-badge--neutral {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+/* Pagination */
+.wat-pagination {
+    margin: 16px 0;
+}
+
+.wat-pagination .page-numbers {
+    display: inline-block;
+    padding: 4px 10px;
+    border: 1px solid #c3c4c7;
+    border-radius: 3px;
+    margin-right: 4px;
+    font-size: 13px;
+    text-decoration: none;
+    color: #2271b1;
+}
+
+.wat-pagination .page-numbers.current {
+    background: #2271b1;
+    color: #fff;
+    border-color: #2271b1;
+}
+
+.wat-pagination .page-numbers:hover:not(.current) {
+    background: #f0f0f1;
+}
