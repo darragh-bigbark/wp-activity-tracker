@@ -13,9 +13,19 @@ class WAT_DB {
      */
     public static function table_exists() {
         global $wpdb;
-        $table = $wpdb->prefix . WAT_TABLE_NAME;
+        $table     = $wpdb->prefix . WAT_TABLE_NAME;
+        $cache_key = 'wat_table_exists';
+
+        $cached = wp_cache_get( $cache_key, 'wat_activity_log' );
+        if ( false !== $cached ) {
+            return (bool) $cached;
+        }
+
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- SHOW TABLES has no WP API equivalent.
-        return (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+        $exists = (bool) $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
+        wp_cache_set( $cache_key, $exists, 'wat_activity_log', HOUR_IN_SECONDS );
+
+        return $exists;
     }
 
     /**
@@ -85,16 +95,15 @@ class WAT_DB {
         $result = $wpdb->insert( $table, $row ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery -- Custom activity log table; no WP API equivalent.
 
         if ( false === $result ) {
-            if ( defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG && $wpdb->last_error ) {
-                error_log( 'Site Activity Tracker — DB insert failed: ' . $wpdb->last_error );
-            }
             return false;
         }
 
         // Invalidate cached log results and event-type list so the
         // next page load reflects the newly inserted row.
+        // Use wp_cache_set (not delete) so the version value actually changes;
+        // deleting would leave the key unset → always cast to 0 → same cache key.
         wp_cache_delete( 'wat_event_types', 'wat_activity_log' );
-        wp_cache_delete( 'wat_log_version', 'wat_activity_log' );
+        wp_cache_set( 'wat_log_version', time(), 'wat_activity_log' );
         return $wpdb->insert_id;
     }
 
@@ -181,6 +190,58 @@ class WAT_DB {
         wp_cache_set( $cache_key, $result, 'wat_activity_log', 5 * MINUTE_IN_SECONDS );
 
         return $result;
+    }
+
+    /**
+     * Fetch all log entries matching optional filters (no pagination).
+     * Used for CSV export.
+     *
+     * @param array $args {
+     *     @type string $event_type  Filter by event type.
+     *     @type string $search      Search username, object name, or IP.
+     * }
+     * @return object[]
+     */
+    public static function get_all_logs( array $args = array() ) {
+        global $wpdb;
+
+        $table = $wpdb->prefix . WAT_TABLE_NAME;
+
+        $args = wp_parse_args( $args, array(
+            'event_type' => '',
+            'search'     => '',
+        ) );
+
+        $event_type = sanitize_text_field( $args['event_type'] );
+        $has_type   = ! empty( $event_type );
+        $has_search = ! empty( $args['search'] );
+        $like       = $has_search
+            ? '%' . $wpdb->esc_like( sanitize_text_field( $args['search'] ) ) . '%'
+            : '';
+
+        if ( ! $has_type && ! $has_search ) {
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + constant; no user input.
+            $rows = $wpdb->get_results( "SELECT * FROM `{$table}` ORDER BY created_at DESC" );
+
+        } elseif ( $has_type && ! $has_search ) {
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + constant; $event_type is sanitized.
+            $rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE event_type = %s ORDER BY created_at DESC", $event_type ) );
+
+        } elseif ( ! $has_type && $has_search ) {
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + constant; $like is produced by $wpdb->esc_like().
+            $rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE ( username LIKE %s OR object_name LIKE %s OR ip_address LIKE %s ) ORDER BY created_at DESC", $like, $like, $like ) );
+
+        } else {
+
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + constant; all values are sanitized/escaped.
+            $rows = $wpdb->get_results( $wpdb->prepare( "SELECT * FROM `{$table}` WHERE event_type = %s AND ( username LIKE %s OR object_name LIKE %s OR ip_address LIKE %s ) ORDER BY created_at DESC", $event_type, $like, $like, $like ) );
+
+        }
+
+        return $rows ? $rows : array();
     }
 
     /**

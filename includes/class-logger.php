@@ -23,6 +23,11 @@ class WAT_Logger {
         add_action( 'deactivated_plugin', array( __CLASS__, 'on_plugin_deactivated' ), 10, 1 );
         add_action( 'deleted_plugin',     array( __CLASS__, 'on_plugin_deleted' ),     10, 1 );
 
+        // --- User events ---
+        add_action( 'user_register',  array( __CLASS__, 'on_user_created' ),  10, 1 );
+        add_action( 'delete_user',    array( __CLASS__, 'on_user_deleted' ),   10, 3 );
+        add_action( 'profile_update', array( __CLASS__, 'on_user_updated' ),  10, 2 );
+
         // --- Theme events ---
         add_action( 'switch_theme',      array( __CLASS__, 'on_theme_switched' ), 10, 2 );
 
@@ -217,6 +222,68 @@ class WAT_Logger {
             'username'    => $info['username'],
             'object_name' => $plugin,
             'description' => "Plugin deleted: {$plugin}.",
+        ) );
+    }
+
+    // -------------------------------------------------------------------------
+    // User callbacks
+    // -------------------------------------------------------------------------
+
+    public static function on_user_created( $user_id ) {
+        $user = get_userdata( $user_id );
+        if ( ! $user ) {
+            return;
+        }
+        $info = self::current_user_info();
+        self::log( array(
+            'event_type'  => 'user_created',
+            'user_id'     => $info['user_id'],
+            'username'    => $info['username'],
+            'object_id'   => $user_id,
+            'object_name' => $user->user_login,
+            'description' => "User created: \"{$user->user_login}\" (ID {$user_id}, email: {$user->user_email}).",
+        ) );
+    }
+
+    public static function on_user_deleted( $user_id, $reassign, $user ) {
+        $info = self::current_user_info();
+        self::log( array(
+            'event_type'  => 'user_deleted',
+            'user_id'     => $info['user_id'],
+            'username'    => $info['username'],
+            'object_id'   => $user_id,
+            'object_name' => $user->user_login,
+            'description' => "User deleted: \"{$user->user_login}\" (ID {$user_id}, email: {$user->user_email}).",
+        ) );
+    }
+
+    public static function on_user_updated( $user_id, $old_user_data ) {
+        $new_user = get_userdata( $user_id );
+        if ( ! $new_user ) {
+            return;
+        }
+        $info = self::current_user_info();
+
+        $changes = array();
+        if ( $old_user_data->user_email !== $new_user->user_email ) {
+            $changes[] = "email: {$old_user_data->user_email} → {$new_user->user_email}";
+        }
+        if ( $old_user_data->display_name !== $new_user->display_name ) {
+            $changes[] = "display name: \"{$old_user_data->display_name}\" → \"{$new_user->display_name}\"";
+        }
+        if ( $old_user_data->user_login !== $new_user->user_login ) {
+            $changes[] = "login: {$old_user_data->user_login} → {$new_user->user_login}";
+        }
+
+        $detail = $changes ? implode( ', ', $changes ) : 'profile data updated';
+
+        self::log( array(
+            'event_type'  => 'user_updated',
+            'user_id'     => $info['user_id'],
+            'username'    => $info['username'],
+            'object_id'   => $user_id,
+            'object_name' => $new_user->user_login,
+            'description' => "User updated: \"{$new_user->user_login}\" (ID {$user_id}) — {$detail}.",
         ) );
     }
 

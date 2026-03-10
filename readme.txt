@@ -4,7 +4,7 @@ Tags: activity log, audit log, login tracking, security, user activity
 Requires at least: 5.8
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.0.1
+Stable tag: 1.0.3
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -63,13 +63,19 @@ All log entries are stored in a single custom table (`{prefix}wat_activity_log`)
 
 = Can I export the log? =
 
-Export functionality is planned for a future release.
+Yes. Click the **Download CSV** button on the Activity Log page. The export respects any active event-type filter or keyword search, so you can export a filtered subset of the log.
 
 == Screenshots ==
 
 1. The Activity Log admin page showing recent events with filtering options.
 
 == Changelog ==
+
+= 1.0.3 =
+* New: Download the full activity log (or a filtered subset) as a CSV file directly from the Activity Log admin page.
+
+= 1.0.2 =
+* User management events: track user creation, profile updates, and deletion.
 
 = 1.0.1 =
 * Fix: Nothing was being logged; added `SHOW TABLES` existence check before every first write so the table is auto-created even if the activation hook was skipped.

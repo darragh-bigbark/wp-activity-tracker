@@ -9,6 +9,7 @@ class WAT_Admin {
     public static function init() {
         add_action( 'admin_menu',            array( __CLASS__, 'register_menu' ) );
         add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_styles' ) );
+        add_action( 'admin_init',            array( __CLASS__, 'handle_export' ) );
     }
 
     public static function register_menu() {
@@ -108,6 +109,19 @@ class WAT_Admin {
                 <?php endif; ?>
             </form>
 
+            <?php
+            $export_url = add_query_arg( array_filter( array(
+                'page'               => 'wat-activity-log',
+                'wat_action'         => 'export_csv',
+                '_wat_export_nonce'  => wp_create_nonce( 'wat_export_csv' ),
+                'wat_event'          => $event_filter,
+                'wat_search'         => $search,
+            ) ), admin_url( 'admin.php' ) );
+            ?>
+            <a href="<?php echo esc_url( $export_url ); ?>" class="button wat-export-btn">
+                <?php esc_html_e( 'Download CSV', 'site-activity-tracker' ); ?>
+            </a>
+
             <p class="wat-total">
                 <?php
                 $count_html = '<strong>' . esc_html( number_format_i18n( $total ) ) . '</strong>';
@@ -182,6 +196,65 @@ class WAT_Admin {
     }
 
     // -------------------------------------------------------------------------
+    // CSV Export
+    // -------------------------------------------------------------------------
+
+    public static function handle_export() {
+        if ( ! isset( $_GET['page'] ) || 'wat-activity-log' !== $_GET['page'] ) {
+            return;
+        }
+        if ( ! isset( $_GET['wat_action'] ) || 'export_csv' !== $_GET['wat_action'] ) {
+            return;
+        }
+        if ( ! current_user_can( 'manage_options' ) ) {
+            wp_die( esc_html__( 'You do not have permission to export the activity log.', 'site-activity-tracker' ) );
+        }
+        if ( ! isset( $_GET['_wat_export_nonce'] ) || ! wp_verify_nonce( sanitize_key( wp_unslash( $_GET['_wat_export_nonce'] ) ), 'wat_export_csv' ) ) {
+            wp_die( esc_html__( 'Invalid request. Please try again.', 'site-activity-tracker' ) );
+        }
+
+        $event_filter = isset( $_GET['wat_event'] )  ? sanitize_text_field( wp_unslash( $_GET['wat_event'] ) )  : '';
+        $search       = isset( $_GET['wat_search'] ) ? sanitize_text_field( wp_unslash( $_GET['wat_search'] ) ) : '';
+
+        $rows     = WAT_DB::get_all_logs( array(
+            'event_type' => $event_filter,
+            'search'     => $search,
+        ) );
+        $filename = 'activity-log-' . gmdate( 'Y-m-d' ) . '.csv';
+
+        header( 'Content-Type: text/csv; charset=UTF-8' );
+        header( 'Content-Disposition: attachment; filename="' . $filename . '"' );
+        header( 'Pragma: no-cache' );
+        header( 'Expires: 0' );
+
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- php://output is not a real file; no WP filesystem API equivalent.
+        $output = fopen( 'php://output', 'w' );
+
+        // UTF-8 BOM so Excel opens the file correctly.
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- writing to php://output stream, not a filesystem path.
+        fwrite( $output, "\xEF\xBB\xBF" );
+
+        fputcsv( $output, array( 'ID', 'Event', 'User', 'IP Address', 'User Agent', 'Object', 'Description', 'Date / Time' ) );
+
+        foreach ( $rows as $row ) {
+            fputcsv( $output, array(
+                $row->id,
+                $row->event_type,
+                $row->username    ?: '',
+                $row->ip_address  ?: '',
+                $row->user_agent  ?: '',
+                $row->object_name ?: '',
+                $row->description ?: '',
+                self::format_date( $row->created_at ),
+            ) );
+        }
+
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- closing php://output stream.
+        fclose( $output );
+        exit;
+    }
+
+    // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
@@ -219,6 +292,9 @@ class WAT_Admin {
             'theme_switched'      => 'info',
             'theme_updated'       => 'info',
             'theme_installed'     => 'success',
+            'user_created'        => 'success',
+            'user_updated'        => 'info',
+            'user_deleted'        => 'danger',
         );
         return isset( $map[ $event_type ] ) ? $map[ $event_type ] : 'neutral';
     }
